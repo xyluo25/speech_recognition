@@ -81,10 +81,17 @@ class Microphone(AudioSource):
         try:
             count = audio.get_device_count()  # obtain device count
             if device_index is not None:  # ensure device index is in range
-                assert 0 <= device_index < count, "Device index out of range ({} devices available; device index should be between 0 and {} inclusive)".format(count, count - 1)
+                assert (
+                    0 <= device_index < count
+                ), f"Device index out of range ({count} devices available; device index should be between 0 and {count - 1} inclusive)"
+
             if sample_rate is None:  # automatically set the sample rate to the hardware's default sample rate if not specified
                 device_info = audio.get_device_info_by_index(device_index) if device_index is not None else audio.get_default_input_device_info()
-                assert isinstance(device_info.get("defaultSampleRate"), (float, int)) and device_info["defaultSampleRate"] > 0, "Invalid device info returned from PyAudio: {}".format(device_info)
+                assert (
+                    isinstance(device_info.get("defaultSampleRate"), (float, int))
+                    and device_info["defaultSampleRate"] > 0
+                ), f"Invalid device info returned from PyAudio: {device_info}"
+
                 sample_rate = int(device_info["defaultSampleRate"])
         finally:
             audio.terminate()
@@ -109,7 +116,10 @@ class Microphone(AudioSource):
             raise AttributeError("Could not find PyAudio; check installation")
         from distutils.version import LooseVersion
         if LooseVersion(pyaudio.__version__) < LooseVersion("0.2.11"):
-            raise AttributeError("PyAudio 0.2.11 or later is required (found version {})".format(pyaudio.__version__))
+            raise AttributeError(
+                f"PyAudio 0.2.11 or later is required (found version {pyaudio.__version__})"
+            )
+
         return pyaudio
 
     @staticmethod
@@ -143,7 +153,11 @@ class Microphone(AudioSource):
             for device_index in range(audio.get_device_count()):
                 device_info = audio.get_device_info_by_index(device_index)
                 device_name = device_info.get("name")
-                assert isinstance(device_info.get("defaultSampleRate"), (float, int)) and device_info["defaultSampleRate"] > 0, "Invalid device info returned from PyAudio: {}".format(device_info)
+                assert (
+                    isinstance(device_info.get("defaultSampleRate"), (float, int))
+                    and device_info["defaultSampleRate"] > 0
+                ), f"Invalid device info returned from PyAudio: {device_info}"
+
                 try:
                     # read audio
                     pyaudio_stream = audio.open(
@@ -712,7 +726,8 @@ class Recognizer(AudioSource):
             if phrase_count >= phrase_buffer_count or len(buffer) == 0: break  # phrase is long enough or we've reached the end of the stream, so stop listening
 
         # obtain frame data
-        for i in range(pause_count - non_speaking_buffer_count): frames.pop()  # remove extra non-speaking frames at the end
+        for _ in range(pause_count - non_speaking_buffer_count):
+            frames.pop()  # remove extra non-speaking frames at the end
         frame_data = b"".join(frames)
 
         return AudioData(frame_data, source.SAMPLE_RATE, source.SAMPLE_WIDTH)
@@ -782,18 +797,30 @@ class Recognizer(AudioSource):
         if isinstance(language, str):  # directory containing language data
             language_directory = os.path.join(os.path.dirname(os.path.realpath(__file__)), "pocketsphinx-data", language)
             if not os.path.isdir(language_directory):
-                raise RequestError("missing PocketSphinx language data directory: \"{}\"".format(language_directory))
+                raise RequestError(
+                    f'missing PocketSphinx language data directory: "{language_directory}"'
+                )
+
             acoustic_parameters_directory = os.path.join(language_directory, "acoustic-model")
             language_model_file = os.path.join(language_directory, "language-model.lm.bin")
             phoneme_dictionary_file = os.path.join(language_directory, "pronounciation-dictionary.dict")
         else:  # 3-tuple of Sphinx data file paths
             acoustic_parameters_directory, language_model_file, phoneme_dictionary_file = language
         if not os.path.isdir(acoustic_parameters_directory):
-            raise RequestError("missing PocketSphinx language model parameters directory: \"{}\"".format(acoustic_parameters_directory))
+            raise RequestError(
+                f'missing PocketSphinx language model parameters directory: "{acoustic_parameters_directory}"'
+            )
+
         if not os.path.isfile(language_model_file):
-            raise RequestError("missing PocketSphinx language model file: \"{}\"".format(language_model_file))
+            raise RequestError(
+                f'missing PocketSphinx language model file: "{language_model_file}"'
+            )
+
         if not os.path.isfile(phoneme_dictionary_file):
-            raise RequestError("missing PocketSphinx phoneme dictionary file: \"{}\"".format(phoneme_dictionary_file))
+            raise RequestError(
+                f'missing PocketSphinx phoneme dictionary file: "{phoneme_dictionary_file}"'
+            )
+
 
         # create decoder object
         config = pocketsphinx.Decoder.default_config()
@@ -874,15 +901,22 @@ class Recognizer(AudioSource):
             "key": key,
             "pFilter": pfilter
         }))
-        request = Request(url, data=flac_data, headers={"Content-Type": "audio/x-flac; rate={}".format(audio_data.sample_rate)})
+        request = Request(
+            url,
+            data=flac_data,
+            headers={
+                "Content-Type": f"audio/x-flac; rate={audio_data.sample_rate}"
+            },
+        )
+
 
         # obtain audio transcription results
         try:
             response = urlopen(request, timeout=self.operation_timeout)
         except HTTPError as e:
-            raise RequestError("recognition request failed: {}".format(e.reason))
+            raise RequestError(f"recognition request failed: {e.reason}")
         except URLError as e:
-            raise RequestError("recognition connection failed: {}".format(e.reason))
+            raise RequestError(f"recognition connection failed: {e.reason}")
         response_text = response.read().decode("utf-8")
 
         # ignore any blank blocks
@@ -975,10 +1009,10 @@ class Recognizer(AudioSource):
         if show_all: return response
         if len(response.results) == 0: raise UnknownValueError()
 
-        transcript = ''
-        for result in response.results:
-            transcript += result.alternatives[0].transcript.strip() + ' '
-        return transcript
+        return ''.join(
+            f'{result.alternatives[0].transcript.strip()} '
+            for result in response.results
+        )
 
     def recognize_wit(self, audio_data, key, show_all=False):
         """
@@ -1002,13 +1036,21 @@ class Recognizer(AudioSource):
             convert_width=2  # audio samples should be 16-bit
         )
         url = "https://api.wit.ai/speech?v=20170307"
-        request = Request(url, data=wav_data, headers={"Authorization": "Bearer {}".format(key), "Content-Type": "audio/wav"})
+        request = Request(
+            url,
+            data=wav_data,
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "audio/wav",
+            },
+        )
+
         try:
             response = urlopen(request, timeout=self.operation_timeout)
         except HTTPError as e:
-            raise RequestError("recognition request failed: {}".format(e.reason))
+            raise RequestError(f"recognition request failed: {e.reason}")
         except URLError as e:
-            raise RequestError("recognition connection failed: {}".format(e.reason))
+            raise RequestError(f"recognition connection failed: {e.reason}")
         response_text = response.read().decode("utf-8")
         result = json.loads(response_text)
 
@@ -1048,7 +1090,8 @@ class Recognizer(AudioSource):
                 allow_caching = False  # don't allow caching, since monotonic time isn't available
         if expire_time is None or monotonic() > expire_time:  # caching not enabled, first credential request, or the access token from the previous one expired
             # get an access token using OAuth
-            credential_url = "https://" + location + ".api.cognitive.microsoft.com/sts/v1.0/issueToken"
+            credential_url = f"https://{location}.api.cognitive.microsoft.com/sts/v1.0/issueToken"
+
             credential_request = Request(credential_url, data=b"", headers={
                 "Content-type": "application/x-www-form-urlencoded",
                 "Content-Length": "0",
@@ -1061,9 +1104,9 @@ class Recognizer(AudioSource):
             try:
                 credential_response = urlopen(credential_request, timeout=60)  # credential response can take longer, use longer timeout instead of default one
             except HTTPError as e:
-                raise RequestError("credential request failed: {}".format(e.reason))
+                raise RequestError(f"credential request failed: {e.reason}")
             except URLError as e:
-                raise RequestError("credential connection failed: {}".format(e.reason))
+                raise RequestError(f"credential connection failed: {e.reason}")
             access_token = credential_response.read().decode("utf-8")
 
             if allow_caching:
@@ -1076,33 +1119,51 @@ class Recognizer(AudioSource):
             convert_width=2  # audio samples should be 16-bit
         )
 
-        url = "https://" + location + ".stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?{}".format(urlencode({
-            "language": language,
-            "format": result_format,
-            "profanity": profanity
-        }))
+        url = (
+            f"https://{location}"
+            + ".stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?{}".format(
+                urlencode(
+                    {
+                        "language": language,
+                        "format": result_format,
+                        "profanity": profanity,
+                    }
+                )
+            )
+        )
+
 
         if sys.version_info >= (3, 6):  # chunked-transfer requests are only supported in the standard library as of Python 3.6+, use it if possible
-            request = Request(url, data=io.BytesIO(wav_data), headers={
-                "Authorization": "Bearer {}".format(access_token),
-                "Content-type": "audio/wav; codec=\"audio/pcm\"; samplerate=16000",
-                "Transfer-Encoding": "chunked",
-            })
+            request = Request(
+                url,
+                data=io.BytesIO(wav_data),
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-type": "audio/wav; codec=\"audio/pcm\"; samplerate=16000",
+                    "Transfer-Encoding": "chunked",
+                },
+            )
+
         else:  # fall back on manually formatting the POST body as a chunked request
             ascii_hex_data_length = "{:X}".format(len(wav_data)).encode("utf-8")
             chunked_transfer_encoding_data = ascii_hex_data_length + b"\r\n" + wav_data + b"\r\n0\r\n\r\n"
-            request = Request(url, data=chunked_transfer_encoding_data, headers={
-                "Authorization": "Bearer {}".format(access_token),
-                "Content-type": "audio/wav; codec=\"audio/pcm\"; samplerate=16000",
-                "Transfer-Encoding": "chunked",
-            })
+            request = Request(
+                url,
+                data=chunked_transfer_encoding_data,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-type": "audio/wav; codec=\"audio/pcm\"; samplerate=16000",
+                    "Transfer-Encoding": "chunked",
+                },
+            )
+
 
         try:
             response = urlopen(request, timeout=self.operation_timeout)
         except HTTPError as e:
-            raise RequestError("recognition request failed: {}".format(e.reason))
+            raise RequestError(f"recognition request failed: {e.reason}")
         except URLError as e:
-            raise RequestError("recognition connection failed: {}".format(e.reason))
+            raise RequestError(f"recognition connection failed: {e.reason}")
         response_text = response.read().decode("utf-8")
         result = json.loads(response_text)
 
@@ -1154,9 +1215,9 @@ class Recognizer(AudioSource):
             try:
                 credential_response = urlopen(credential_request, timeout=60)  # credential response can take longer, use longer timeout instead of default one
             except HTTPError as e:
-                raise RequestError("credential request failed: {}".format(e.reason))
+                raise RequestError(f"credential request failed: {e.reason}")
             except URLError as e:
-                raise RequestError("credential connection failed: {}".format(e.reason))
+                raise RequestError(f"credential connection failed: {e.reason}")
             access_token = credential_response.read().decode("utf-8")
 
             if allow_caching:
@@ -1176,26 +1237,36 @@ class Recognizer(AudioSource):
         }))
 
         if sys.version_info >= (3, 6):  # chunked-transfer requests are only supported in the standard library as of Python 3.6+, use it if possible
-            request = Request(url, data=io.BytesIO(wav_data), headers={
-                "Authorization": "Bearer {}".format(access_token),
-                "Content-type": "audio/wav; codec=\"audio/pcm\"; samplerate=16000",
-                "Transfer-Encoding": "chunked",
-            })
+            request = Request(
+                url,
+                data=io.BytesIO(wav_data),
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-type": "audio/wav; codec=\"audio/pcm\"; samplerate=16000",
+                    "Transfer-Encoding": "chunked",
+                },
+            )
+
         else:  # fall back on manually formatting the POST body as a chunked request
             ascii_hex_data_length = "{:X}".format(len(wav_data)).encode("utf-8")
             chunked_transfer_encoding_data = ascii_hex_data_length + b"\r\n" + wav_data + b"\r\n0\r\n\r\n"
-            request = Request(url, data=chunked_transfer_encoding_data, headers={
-                "Authorization": "Bearer {}".format(access_token),
-                "Content-type": "audio/wav; codec=\"audio/pcm\"; samplerate=16000",
-                "Transfer-Encoding": "chunked",
-            })
+            request = Request(
+                url,
+                data=chunked_transfer_encoding_data,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-type": "audio/wav; codec=\"audio/pcm\"; samplerate=16000",
+                    "Transfer-Encoding": "chunked",
+                },
+            )
+
 
         try:
             response = urlopen(request, timeout=self.operation_timeout)
         except HTTPError as e:
-            raise RequestError("recognition request failed: {}".format(e.reason))
+            raise RequestError(f"recognition request failed: {e.reason}")
         except URLError as e:
-            raise RequestError("recognition connection failed: {}".format(e.reason))
+            raise RequestError(f"recognition connection failed: {e.reason}")
         response_text = response.read().decode("utf-8")
         result = json.loads(response_text)
 
@@ -1270,18 +1341,25 @@ class Recognizer(AudioSource):
                 hashlib.sha256
             ).digest()  # get the HMAC digest as bytes
         ).decode("utf-8")
-        request = Request(url, data=wav_data, headers={
-            "Content-Type": "application/json",
-            "Hound-Request-Info": json.dumps({"ClientID": client_id, "UserID": user_id}),
-            "Hound-Request-Authentication": "{};{}".format(user_id, request_id),
-            "Hound-Client-Authentication": "{};{};{}".format(client_id, request_time, request_signature)
-        })
+        request = Request(
+            url,
+            data=wav_data,
+            headers={
+                "Content-Type": "application/json",
+                "Hound-Request-Info": json.dumps(
+                    {"ClientID": client_id, "UserID": user_id}
+                ),
+                "Hound-Request-Authentication": f"{user_id};{request_id}",
+                "Hound-Client-Authentication": f"{client_id};{request_time};{request_signature}",
+            },
+        )
+
         try:
             response = urlopen(request, timeout=self.operation_timeout)
         except HTTPError as e:
-            raise RequestError("recognition request failed: {}".format(e.reason))
+            raise RequestError(f"recognition request failed: {e.reason}")
         except URLError as e:
-            raise RequestError("recognition connection failed: {}".format(e.reason))
+            raise RequestError(f"recognition connection failed: {e.reason}")
         response_text = response.read().decode("utf-8")
         result = json.loads(response_text)
 
@@ -1311,23 +1389,31 @@ class Recognizer(AudioSource):
             convert_rate=None if audio_data.sample_rate >= 16000 else 16000,  # audio samples should be at least 16 kHz
             convert_width=None if audio_data.sample_width >= 2 else 2  # audio samples should be at least 16-bit
         )
-        url = "https://stream.watsonplatform.net/speech-to-text/api/v1/recognize?{}".format(urlencode({
-            "profanity_filter": "false",
-            "model": "{}_BroadbandModel".format(language),
-            "inactivity_timeout": -1,  # don't stop recognizing when the audio stream activity stops
-        }))
+        url = "https://stream.watsonplatform.net/speech-to-text/api/v1/recognize?{}".format(
+            urlencode(
+                {
+                    "profanity_filter": "false",
+                    "model": f"{language}_BroadbandModel",
+                    "inactivity_timeout": -1,
+                }
+            )
+        )
+
         request = Request(url, data=flac_data, headers={
             "Content-Type": "audio/x-flac",
             "X-Watson-Learning-Opt-Out": "true",  # prevent requests from being logged, for improved privacy
         })
-        authorization_value = base64.standard_b64encode("{}:{}".format(username, password).encode("utf-8")).decode("utf-8")
-        request.add_header("Authorization", "Basic {}".format(authorization_value))
+        authorization_value = base64.standard_b64encode(
+            f"{username}:{password}".encode("utf-8")
+        ).decode("utf-8")
+
+        request.add_header("Authorization", f"Basic {authorization_value}")
         try:
             response = urlopen(request, timeout=self.operation_timeout)
         except HTTPError as e:
-            raise RequestError("recognition request failed: {}".format(e.reason))
+            raise RequestError(f"recognition request failed: {e.reason}")
         except URLError as e:
-            raise RequestError("recognition connection failed: {}".format(e.reason))
+            raise RequestError(f"recognition connection failed: {e.reason}")
         response_text = response.read().decode("utf-8")
         result = json.loads(response_text)
 
@@ -1339,9 +1425,12 @@ class Recognizer(AudioSource):
         transcription = []
         for utterance in result["results"]:
             if "alternatives" not in utterance: raise UnknownValueError()
-            for hypothesis in utterance["alternatives"]:
-                if "transcript" in hypothesis:
-                    transcription.append(hypothesis["transcript"])
+            transcription.extend(
+                hypothesis["transcript"]
+                for hypothesis in utterance["alternatives"]
+                if "transcript" in hypothesis
+            )
+
         return "\n".join(transcription)
 
     lasttfgraph = ''
@@ -1388,8 +1477,7 @@ class Recognizer(AudioSource):
             # Sort labels in order of confidence
             top_k = predictions.argsort()[-1:][::-1]
             for node_id in top_k:
-                human_string = self.tflabels[node_id]
-                return human_string
+                return self.tflabels[node_id]
 
 
 def get_flac_converter():
@@ -1478,10 +1566,22 @@ def recognize_api(self, audio_data, client_access_token, language="en", session_
         if boundary.encode("utf-8") not in wav_data: break
     if session_id is None: session_id = uuid.uuid4().hex
     data = b"--" + boundary.encode("utf-8") + b"\r\n" + b"Content-Disposition: form-data; name=\"request\"\r\n" + b"Content-Type: application/json\r\n" + b"\r\n" + b"{\"v\": \"20150910\", \"sessionId\": \"" + session_id.encode("utf-8") + b"\", \"lang\": \"" + language.encode("utf-8") + b"\"}\r\n" + b"--" + boundary.encode("utf-8") + b"\r\n" + b"Content-Disposition: form-data; name=\"voiceData\"; filename=\"audio.wav\"\r\n" + b"Content-Type: audio/wav\r\n" + b"\r\n" + wav_data + b"\r\n" + b"--" + boundary.encode("utf-8") + b"--\r\n"
-    request = Request(url, data=data, headers={"Authorization": "Bearer {}".format(client_access_token), "Content-Length": str(len(data)), "Expect": "100-continue", "Content-Type": "multipart/form-data; boundary={}".format(boundary)})
+    request = Request(
+        url,
+        data=data,
+        headers={
+            "Authorization": f"Bearer {client_access_token}",
+            "Content-Length": str(len(data)),
+            "Expect": "100-continue",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        },
+    )
+
     try: response = urlopen(request, timeout=10)
-    except HTTPError as e: raise RequestError("recognition request failed: {}".format(e.reason))
-    except URLError as e: raise RequestError("recognition connection failed: {}".format(e.reason))
+    except HTTPError as e:
+        raise RequestError(f"recognition request failed: {e.reason}")
+    except URLError as e:
+        raise RequestError(f"recognition connection failed: {e.reason}")
     response_text = response.read().decode("utf-8")
     result = json.loads(response_text)
     if show_all: return result
