@@ -25,7 +25,7 @@ class InstallWithExtraSteps(install):
         # mark the FLAC executables as executable by all users (this fixes occasional issues when file permissions get messed up)
         for output_path in self.get_outputs():
             if os.path.basename(output_path) in FILES_TO_MARK_EXECUTABLE:
-                log.info("setting executable permissions on {}".format(output_path))
+                log.info(f"setting executable permissions on {output_path}")
                 stat_info = os.stat(output_path)
                 os.chmod(
                     output_path,
